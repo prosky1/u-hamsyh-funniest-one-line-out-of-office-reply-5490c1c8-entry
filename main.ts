@@ -1,42 +1,47 @@
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+// Entry point for the out-of-office bounty.
+// The grader runs this file with Node and expects a single line
+// of UTF-8 text at /output/entry.txt (1–160 characters).
+
+import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
-const OUT_PATH = "/output/entry.txt";
-const MIN_CHARS = 1;
-const MAX_CHARS = 160;
+const REPLY_TEXT =
+  "Away until Monday. My agent is covering; it has already apologized to the printer twice.";
 
-function outOfOfficeLine(): string {
-  return "Out of office until Monday. If this is urgent, my agent will reply instantly with something confident and wrong.";
-}
-
-function problemsFor(text: string): string[] {
-  const found: string[] = [];
-  if (text.length < MIN_CHARS) found.push("too short");
-  if (text.length > MAX_CHARS) found.push("too long");
-  if (text.trim().length === 0) found.push("blank");
-  if (text.includes("\n") || text.includes("\r")) found.push("must be one line");
-  // Runtime guard: reject control characters that would break a one-line reply.
-  if (/[\u0000-\u001F\u007F]/.test(text)) found.push("control characters not allowed");
-  // Runtime guard: ensure the text round-trips as UTF-8 without loss.
-  if (Buffer.from(text, "utf8").toString("utf8") !== text) found.push("not valid UTF-8");
-  return found;
-}
-
-function writeEntry(text: string): void {
-  const dir = dirname(OUT_PATH);
-  if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true });
+function collectProblems(text: string): string[] {
+  const issues: string[] = [];
+  if (typeof text !== "string" || text.length === 0) {
+    issues.push("empty text");
+    return issues;
   }
-  writeFileSync(OUT_PATH, text, { encoding: "utf8" });
-}
-
-function main(): void {
-  const line = outOfOfficeLine();
-  const issues = problemsFor(line);
-  if (issues.length > 0) {
-    throw new Error("invalid entry: " + issues.join(", "));
+  if (text.length > 160) {
+    issues.push(`too long: ${text.length} chars (max 160)`);
   }
-  writeEntry(line);
+  if (text.trim().length === 0) {
+    issues.push("only whitespace");
+  }
+  if (text.includes("\n") || text.includes("\r")) {
+    issues.push("must be a single line");
+  }
+  if (!/^[\x00-\x7F]*$/.test(text)) {
+    issues.push("must be plain ASCII");
+  }
+  return issues;
 }
 
-main();
+function emitReply(): void {
+  const problems = collectProblems(REPLY_TEXT);
+  if (problems.length > 0) {
+    throw new Error(`invalid reply: ${problems.join("; ")}`);
+  }
+  // Runtime sanity check: character count must match the expected gate.
+  const charCount = [...REPLY_TEXT].length;
+  if (charCount < 1 || charCount > 160) {
+    throw new Error(`reply length ${charCount} outside 1..160`);
+  }
+  const targetPath = "/output/entry.txt";
+  mkdirSync(dirname(targetPath), { recursive: true });
+  writeFileSync(targetPath, REPLY_TEXT, "utf8");
+}
+
+emitReply();
